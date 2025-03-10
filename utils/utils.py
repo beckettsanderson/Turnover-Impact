@@ -211,3 +211,18 @@ def get_play_video(game_id, event_id, download=True, p = True):
                 f.write(chunk)
         
         print(f"Video downloaded successfully as {file_name}")
+
+
+def get_relative_rating(df, o_team, d_team, year):
+
+    o_rate = df[(df['team']==o_team) &( df['year'] == year)]['non_fb_o_rating'].values[0]
+    d_rate = df[(df['team']==d_team) &( df['year'] == year)]['non_fb_d_rating'].values[0]
+
+    return (o_rate+d_rate)/2
+
+def get_relative_adj(df, o_team, d_team, year):
+
+    o_rate = df[(df['team']==o_team) &( df['year'] == year)]['o_half_court_dff'].values[0]
+    d_rate = df[(df['team']==d_team) &( df['year'] == year)]['d_half_court_dff'].values[0]
+
+    return (o_rate+d_rate)/2
