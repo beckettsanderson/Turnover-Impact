@@ -40,8 +40,7 @@ def get_play_df(game_id, timeout= 2):
 def tov_processor(play_df, teams):
     # this processes turnovers from one game
 
-    # tov_cols = ['team','player_id', 'player', 'type', 'period', 'clock', 'event_id', 'next_pos_points', 'shot_clock']
-    tov_cols = ['team', 'player_id', 'player', 'type', 'period', 'clock','gameId', 'actionNumber', 'next_pos_points', 'shot_clock', 'opp_team']
+    tov_cols = ['team', 'player_id', 'player', 'type', 'period', 'clock','gameId', 'actionNumber', 'next_pos_points', 'shot_clock', 'opp_team', 'dead_ball']
 
 
     tov_df = pd.DataFrame(columns = tov_cols)
@@ -59,8 +58,8 @@ def tov_processor(play_df, teams):
 
             if len(tov_info[0]) == 0:
 
-                other_team = [x for x in teams if x != play_df.loc[i + 1, 'teamTricode']][0]
-                tov_info[0] = other_team
+                team_id  = play_df.loc[i, 'personId']
+                tov_info[0] = play_df[play_df['teamId'] == team_id].iloc[0,5]
 
             # get points other team scored on next possession
             next_pos_points = 0
@@ -102,6 +101,7 @@ def tov_processor(play_df, teams):
             # find time in shot clock at turnover
             j = k-1
             shot_clock = 0
+            end = False
             while True:
 
                 # check for start of period
@@ -110,9 +110,19 @@ def tov_processor(play_df, teams):
                         break
                      
                 # check for start of possession
-                if play_df.loc[j, 'actionType'] in ['Made Shot', 'Turnover', 'Free Throw'] and play_df.loc[j, 'teamTricode'] != tov_info[0]:
+                if play_df.loc[j, 'actionType'] in ['Turnover', 'Free Throw'] and play_df.loc[j, 'teamTricode'] != tov_info[0]:
                     shot_clock = max(24 - (play_df.loc[j, 'clock'] - tov_info[5]), shot_clock)
                     break
+
+                if play_df.loc[j, 'actionType'] == 'Made Shot' and play_df.loc[j, 'teamTricode'] != tov_info[0]:
+
+                    if (play_df.loc[j, 'clock'] <= 60) or (play_df.loc[j, 'clock'] <= 120 and play_df.loc[j, 'period'] >= 4):
+                        shot_clock = max(24 - (play_df.loc[j, 'clock'] - tov_info[5]), shot_clock)
+                        break
+
+                    shot_clock = max(26.5 - (play_df.loc[j, 'clock'] - tov_info[5]), shot_clock)
+
+
 
                 # check for defensive foul that resets to 14 seconds
                 if play_df.loc[j, 'actionType'] == 'Foul' and play_df.loc[j, 'teamTricode'] == tov_info[0]:
@@ -122,19 +132,38 @@ def tov_processor(play_df, teams):
                 # check for rebound
                 if play_df.loc[j, 'actionType'] == 'Rebound':
 
-                    # check defensive rebound
-                    if play_df.loc[j-1, 'actionType'] == 'Missed Shot' and play_df.loc[j-1, 'teamTricode'] != tov_info[0]:
-                        shot_clock = max(24 - (play_df.loc[j, 'clock'] - tov_info[5]), shot_clock)
-                        break
-                    
-                    # check offensive rebound
-                    if play_df.loc[j-1, 'actionType'] == 'Missed Shot' and play_df.loc[j-1, 'teamTricode'] == tov_info[0]:
-                        shot_clock = 14 - (play_df.loc[j, 'clock'] - tov_info[5])
+                    k = j-1
+
+                    while True:
+
+                        # check defensive rebound
+                        if play_df.loc[k, 'actionType'] in ['Missed Shot', 'Free Throw'] and play_df.loc[k, 'teamTricode'] != tov_info[0]:
+                            shot_clock = max(24 - (play_df.loc[j, 'clock'] - tov_info[5]), shot_clock)
+                            end = True
+                            break
+                        
+                        # check offensive rebound
+                        if play_df.loc[k, 'actionType'] in ['Missed Shot', 'Free Throw'] and play_df.loc[k, 'teamTricode'] == tov_info[0] and 'BLOCK' not in play_df.loc[k, 'description']:
+                            shot_clock = max(14 - (play_df.loc[j, 'clock'] - tov_info[5]), shot_clock)
+                            break
+
+                        k -= 1
+
+                if end:
+                    break
 
                 j -= 1
 
+            if tov_info[3] == 'Shot Clock Turnover':
+                shot_clock = 0
+
             tov_info += [next_pos_points, shot_clock]
             tov_info += [[x for x in teams if x != tov_info[0]][0]]
+
+            if tov_info[3] in ['Bad Pass', 'Lost Ball']:
+                tov_info += [0]
+            else:
+                tov_info += [1]
 
             tov_df.loc[len(tov_df),:] = tov_info
 
